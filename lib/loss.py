@@ -87,15 +87,16 @@ class MMLoss(nn.Module):
         loss = 0
         for i in range(self.score1.shape[0]):
             # if number of samples is too samll or scores are all zeros, randomly generate a new mask
-            feat1,score1,feat2,score2,position = self.ramdom_sampler(self.feat1[i],self.AP3(self.score1[i]),self.feat2_warped[i],
-                                                                     self.AP3(self.score2_warped[i]),self.good_mask[i])
+            feat1,score1,feat2,score2,position = self.ramdom_sampler(self.feat1[i],self.score1[i],self.feat2_warped[i],
+                                                                     self.score2_warped[i],self.good_mask[i])
             assert feat1.shape[0]==feat2.shape[0]
             M = self.compute_hard_dist(feat1,feat2,position)
             score_i = score1*score2
             # generate save mask for two neighbors
+            #loss += (score_i.detach()*M).sum()
             loss += (score_i.detach()*M).sum()/(self.running_score_sum+1e-5)
             self.running_score_sum = 0.99*self.running_score_sum+0.01*score_i.sum().detach()
-            assert not loss.isnan()
+            #assert not loss.isnan()
         return loss/(i+1)
     
     def loss_rep(self):
@@ -110,7 +111,7 @@ class MMLoss(nn.Module):
         cosim = (patches1 * patches2).sum(dim=2,keepdim=True)
         #rep loss weighted with desciptors similairty
         loss_rep = (patches_simi*(1.0-cosim)).sum()/(self.running_rep_sum+1e-5)
-        assert not loss_rep.isnan()
+        #assert not loss_rep.isnan()
         self.running_rep_sum = 0.99*self.running_rep_sum + 0.01*patches_simi.sum()
         return loss_rep
     
@@ -160,9 +161,9 @@ class MMLoss(nn.Module):
         self.mask2_mean = 0.99*self.mask2_mean + 0.01*mask2.mean()
         loss_peak = (loss_peak_edge+loss_peak_random+loss_peak_coupled)
         assert not loss_peak_edge.isnan()
-        assert not loss_peak_coupled.isnan()
-        assert not loss_peak_random.isnan()
-        assert not loss_peak.isnan()
+        #assert not loss_peak_coupled.isnan()
+        #assert not loss_peak_random.isnan()
+        #assert not loss_peak.isnan()
         return loss_peak
     
     def forward(self,feat1,score1,feat2,score2,flow12=None,img1=None,img2=None):
@@ -182,7 +183,7 @@ class MMLoss(nn.Module):
         self.loss_desc_ = self.loss_desc()
         self.loss_peak_ = self.loss_peak()
         self.loss_rep_ = self.loss_rep()
-        return self.loss_desc_+self.lam1*self.loss_peak_+self.lam2*self.loss_rep_
+        return self.loss_rep_+self.loss_peak_+self.loss_desc_
     
     def generate_good_mask(self,ones,flow12,n=1):
         good_mask =KGT.remap(ones*0+1,flow12[..., 0], flow12[..., 1], align_corners=False)

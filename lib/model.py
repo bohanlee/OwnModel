@@ -6,7 +6,27 @@ import torch.nn.functional as F
 import kornia.filters as KF
 import torchvision.models as models
 from lib.modules import *
+import torch
+from torch import nn
+from torch import optim
+import torch.nn.functional as F
+import numpy as np
+import cv2
 
+class UNetpart(nn.Module):
+    def __init__(self,enc_channels=[3,32,64,128]):
+        super().__init__()
+        dec_channels = enc_channels[::-1]
+        self.encoder = Encoder(enc_channels)
+        self.decoder = Decoder(enc_channels, dec_channels)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    def forward(self, x):
+        #print(x.shape)
+        feats = self.encoder(x)
+        out = self.decoder(feats)
+        #print(out.shape)
+        return out
 
 
 class BaseNet(nn.Module):
@@ -57,6 +77,7 @@ class Adapter(BaseNet):
         self.ops = ops
         self.RLNs = tt
     def forward(self,x):
+        
         for i,layer in enumerate(self.ops):
             if i%2==1:
                 x = layer(x)+x
@@ -66,11 +87,15 @@ class Adapter(BaseNet):
         return x
 
 
-class Encoder(nn.Module):
+class Encoder1(nn.Module):
     def __init__(self, dim=128, mchan=4, relu22=False, dilation=4,**kw ):
-        super(Encoder,self).__init__()
-        t = BaseNet(inchan=32*mchan, dilation=dilation)
+        super(Encoder1,self).__init__()
+        t = BaseNet(inchan=3, dilation=dilation)
         ops=nn.ModuleList([])
+        ops.append(t.MakeBlk(8*mchan))
+        ops.append(t.MakeBlk(8*mchan))
+        ops.append(t.MakeBlk(16*mchan,stride=2))
+        ops.append(t.MakeBlk(16*mchan))
         ops.append(t.MakeBlk(32*mchan, k=3, stride=2, relu=False))
         ops.append(t.MakeBlk(32*mchan, k=3, stride=2, relu=False))
         ops.append(t.MakeBlk(dim, k=3, stride=2, bn=False, relu=False))
@@ -78,11 +103,13 @@ class Encoder(nn.Module):
         self.ops = ops
 
     def forward(self,x):
+        #print(x.shape)
         for i in range(len(self.ops)):
             if i%2==1:
                 x = self.ops[i](x)+x
             else:
                 x = self.ops[i](x)
+                
         return x
 
     
@@ -167,32 +194,75 @@ class Superhead(nn.Module):
         p_y = (p_x*p_c)
         return p_y  
         
-
 class MMNet(nn.Module):
     def __init__(self):
-        super(MMNet, self).__init__()
-        self.ada1 = Adapter()
-        self.ada2 = Adapter()
-        self.enc = Encoder()
-        self.det = Superhead()
-
+        super(MMNet,self).__init__()
+        self.enc=UNetpart()
+        self.Upc=Encoder1()
+        self.postconv = nn.Conv2d(3,2,3,padding=1,bias=False)
+        self.PriorEstimator = nn.Sequential(nn.Conv2d(3,1,kernel_size=1))
+    def p_x(self,x):
+        x = self.PriorEstimator(x)
+        p_x = F.softplus(x)
+        p_x = p_x/(1+p_x)
+        #p_x = x/(1+x)
+        return p_x
+    
     def forward1(self,imgs):
-        feat_in = self.ada1(imgs)
-        feat = self.enc(feat_in)
-        score = self.det(feat.pow(2))
-        return F.normalize(feat,dim=1), score
-
+        scmap=self.enc(imgs)
+        scmap1=self.p_x(scmap)
+        scmap2=self.postconv(scmap)
+        #scm=scmap.clone()
+        #print(scmap.shape)
+        scoreMap = F.softmax(scmap2,dim=1)[:,0].unsqueeze(1)
+        scoreMap=(scoreMap*scmap1)
+        feat=self.Upc(scmap)
+        return feat,scoreMap
     def forward2(self,imgs):
-        feat_in = self.ada2(imgs)
-        feat = self.enc(feat_in)
-        score = self.det(feat.pow(2))
-        return F.normalize(feat,dim=1), score
-
-    def forward(self, img1, img2):
+        scmap=self.enc(imgs)
+        scmap1=self.p_x(scmap)
+        scmap2=self.postconv(scmap)
+        #scm=scmap.clone()
+        #print(scmap.shape)
+        scoreMap = F.softmax(scmap2,dim=1)[:,0].unsqueeze(1)
+        scoreMap=(scoreMap*scmap1)
+        feat=self.Upc(scmap)
+        return feat,scoreMap
+    def forward(self,img1,img2):
         feat1,score1 = self.forward1(img1)
         feat2,score2 = self.forward2(img2)
         return {
             'feat': [feat1, feat2],
             'score': [score1, score2]
         }
+
+# class MMNet(nn.Module):
+#     def __init__(self):
+#         super(MMNet, self).__init__()
+#         self.ada1 = Adapter()
+#         self.ada2 = Adapter()
+#         self.enc = Encoder()
+#         self.det = Superhead()
+
+#     def forward1(self,imgs):
+#         feat_in = self.ada1(imgs)
+#         #feat_in=imgs
+#         feat = self.enc(feat_in)
+#         score = self.det(feat.pow(2))
+#         return F.normalize(feat,dim=1), score
+
+#     def forward2(self,imgs):
+#         feat_in = self.ada2(imgs)
+#         #feat_in=imgs
+#         feat = self.enc(feat_in)
+#         score = self.det(feat.pow(2))
+#         return F.normalize(feat,dim=1), score
+
+#     def forward(self, img1, img2):
+#         feat1,score1 = self.forward1(img1)
+#         feat2,score2 = self.forward2(img2)
+#         return {
+#             'feat': [feat1, feat2],
+#             'score': [score1, score2]
+#         }
         

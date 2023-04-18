@@ -81,8 +81,8 @@ def process_epoch(
             
 
         running_loss_desc += loss_function.loss_desc_
-        running_loss_peak += loss_function.loss_peak_
-        running_loss_rep += loss_function.loss_rep_
+        #running_loss_peak += loss_function.loss_peak_
+        #running_loss_rep += loss_function.loss_rep_
         # running_pos += loss_function.pos
         # running_neg += loss_function.neg
         # running_score += loss_function.score_mean
@@ -96,18 +96,18 @@ def process_epoch(
                 epoch_idx, batch_idx, len(dataloader), np.mean(epoch_losses)
             ))
     print('loss_desc: {}\n'.format(running_loss_desc.item()/(batch_idx+1)))
-    print('loss_peak: {}\n'.format(running_loss_peak.item()/(batch_idx+1)))
-    print('loss_rep: {}\n'.format(running_loss_rep.item()/(batch_idx+1)))
+    #print('loss_peak: {}\n'.format(running_loss_peak.item()/(batch_idx+1)))
+    #print('loss_rep: {}\n'.format(running_loss_rep.item()/(batch_idx+1)))
     # print('pos: {}\n'.format(running_pos.item()/(batch_idx+1)))
     # print('neg: {}\n'.format(running_neg.item()/(batch_idx+1)))
     # print('score: {}\n'.format(running_score.item()/(batch_idx+1)))
-    log_file.write('[%s] epoch %d - avg_loss: %f   loss_desc: %f   loss_rep: %f   loss_peak: %f \n ' % (
+    log_file.write('[%s] epoch %d - avg_loss: %f   running_loss_rep: %f  running_loss_peak: %f \n ' % (
         'train' if train else 'valid',
         epoch_idx,
         np.mean(epoch_losses),
         running_loss_desc.item()/(batch_idx+1),
-        running_loss_rep.item()/(batch_idx+1),
-        running_loss_peak.item()/(batch_idx+1),
+        #running_loss_rep.item()/(batch_idx+1),
+        #running_loss_peak.item()/(batch_idx+1),
         
     ))
     log_file.flush()
@@ -230,18 +230,18 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--name', type=str, default='ReDFeat_SAR',
+        '--name', type=str, default='NIRori',
         help='directory for training checkpoints'
     )
     
 
     parser.add_argument(
-        '--image_type', type=str, default='VIS_NIR',
+        '--image_type', type=str, default='VIS_SAR',
         help='type of training images VIS_IR, VIS_NIR, VIS_SAR'
     )
 
     parser.add_argument(
-        '--datapath', type=str, default='Multimodal_Feature_Evaluation-main',
+        '--datapath', type=str, default='../',
         help='root for training data'
     )
 
